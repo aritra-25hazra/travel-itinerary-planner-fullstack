@@ -1,5 +1,12 @@
 # 🧭 Personalized Travel Itinerary Planner — Full-stack
 
+## 🔗 Live demo
+
+- **App (Vercel):** https://travel-itinerary-planner-lilac.vercel.app
+- **API (Render):** https://travel-planner-api-nteb.onrender.com — health: https://travel-planner-api-nteb.onrender.com/api/health · docs: https://travel-planner-api-nteb.onrender.com/docs
+
+> The API runs on Render's free tier and sleeps when idle, so the first request after a quiet spell can take ~50 s.
+
 AI-powered travel SaaS: tell it where (or just what vibe), when, who and how much, and get an optimised
 day-by-day itinerary — attractions grouped by neighbourhood, transport between every stop, costed in local
 currency / USD / INR, a stay suggestion, per-day customisation and an offline PDF guide.
