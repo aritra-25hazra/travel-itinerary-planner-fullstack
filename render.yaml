@@ -1,0 +1,28 @@
+# Render Blueprint - deploys the FastAPI backend as a free web service.
+# Render dashboard -> New -> Blueprint -> pick this repo. Or create a Web Service manually with the same values.
+services:
+  - type: web
+    name: travel-planner-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ALLOWED_ORIGINS
+        value: http://localhost:5173          # replace with your Vercel URL after the frontend is live
+      - key: RATE_LIMIT_PER_HOUR
+        value: "20"
+      - key: GROQ_API_KEY
+        sync: false                            # paste in the dashboard (optional -> Demo AI)
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: UNSPLASH_ACCESS_KEY
+        sync: false                            # optional -> gradient placeholders
+      - key: SUPABASE_URL
+        sync: false                            # optional -> guest mode with SQLite
+      - key: SUPABASE_ANON_KEY
+        sync: false

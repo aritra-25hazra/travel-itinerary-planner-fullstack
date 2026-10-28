@@ -1,0 +1,22 @@
+# dependencies / builds
+node_modules/
+dist/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# local data & secrets
+*.db
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# editor / os
+.DS_Store
+.vscode/
+.idea/
