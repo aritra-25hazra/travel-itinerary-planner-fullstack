@@ -16,10 +16,11 @@ from fastapi.responses import JSONResponse, Response
 
 from auth import Identity, get_identity
 from config import Settings, get_settings
-from models import Health, PlanRequest, Preferences, Recommendation, RegenerateDayRequest, TripIn, TripOut
+from models import (Health, PlanRequest, Preferences, Recommendation, RegenerateDayRequest, SharedTripOut, ShareOut,
+                    TripIn, TripOut)
 from services import engine, planner
 from services.images import search_image
-from services.storage import storage_for
+from services.storage import SQLiteStorage, public_storage, storage_for
 
 settings = get_settings()
 
@@ -148,6 +149,55 @@ async def delete_trip(trip_id: str, who: Identity = Depends(get_identity), setti
     if not await storage_for(who, settings).delete(who, trip_id):
         raise HTTPException(status_code=404, detail="Trip not found")
     return Response(status_code=204)
+
+
+# ---- sharing (read-only links + clone)
+
+
+@app.post("/api/trips/{trip_id}/share", response_model=ShareOut)
+async def share_trip(trip_id: str, who: Identity = Depends(get_identity), settings: Settings = Depends(get_settings)):
+    """Turn on a public read-only link for a trip you own (idempotent: returns the existing token)."""
+    try:
+        token = await storage_for(who, settings).set_share(who, trip_id, True)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return ShareOut(trip_id=trip_id, share_token=token, share_path=f"/share/{token}" if token else None)
+
+
+@app.delete("/api/trips/{trip_id}/share", response_model=ShareOut)
+async def unshare_trip(trip_id: str, who: Identity = Depends(get_identity), settings: Settings = Depends(get_settings)):
+    try:
+        await storage_for(who, settings).set_share(who, trip_id, False)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return ShareOut(trip_id=trip_id, share_token=None, share_path=None)
+
+
+async def _find_shared(token: str, settings: Settings) -> dict:
+    if not (8 <= len(token) <= 64) or not token.replace("-", "").replace("_", "").isalnum():
+        raise HTTPException(status_code=404, detail="Shared trip not found")
+    trip = await public_storage(settings).get_shared(token)
+    if trip is None and settings.storage_mode == "supabase":
+        # guests' trips live in SQLite even when Supabase is configured
+        trip = await SQLiteStorage(settings.sqlite_path).get_shared(token)
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Shared trip not found or sharing was turned off")
+    return trip
+
+
+@app.get("/api/shared/{token}", response_model=SharedTripOut)
+async def get_shared_trip(token: str, settings: Settings = Depends(get_settings)):
+    """Public: anyone with the link can view (no login, no guest id needed)."""
+    trip = await _find_shared(token, settings)
+    return {**trip, "share_token": token}
+
+
+@app.post("/api/shared/{token}/clone", response_model=TripOut, status_code=201)
+async def clone_shared_trip(token: str, who: Identity = Depends(get_identity), settings: Settings = Depends(get_settings)):
+    """Copy a shared trip into the caller's own trips so they can edit their version."""
+    trip = await _find_shared(token, settings)
+    name = f"{trip['name']} (copy)"
+    return await storage_for(who, settings).create(who, name, trip["preferences"], trip["plan"])
 
 
 @app.get("/api/meta")

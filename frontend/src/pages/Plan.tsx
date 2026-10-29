@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Check, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge, Button, Card, Chip, Cover, Field, inputClass, Skeleton } from "../components/ui";
@@ -141,6 +141,40 @@ export default function Plan() {
             <Field label="Group size" hint="Used for the group total estimate (rooms = people ÷ 2).">
               <input type="number" min={1} max={20} className={inputClass} value={prefs.group_size} onChange={(e) => set({ group_size: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })} />
             </Field>
+            <Field label="Day starts at" hint="Activities are scheduled from this time; the planner flags days that run past 11 pm.">
+              <input type="time" className={inputClass} value={prefs.day_start} onChange={(e) => set({ day_start: e.target.value || "09:00" })} />
+            </Field>
+            {prefs.group_size > 1 && (
+              <div className="sm:col-span-2 rounded-2xl bg-sand p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="font-semibold text-sm">Travellers & their interests (optional)</div>
+                    <div className="text-xs text-muted">Add each person so the plan covers everyone and the itinerary shows a "group fit" report.</div>
+                  </div>
+                  <Button variant="secondary" className="!py-1.5" disabled={prefs.travellers.length >= 10}
+                    onClick={() => set({ travellers: [...prefs.travellers, { name: "", interests: [] }] })}><Plus className="w-4 h-4" /> Add traveller</Button>
+                </div>
+                <div className="space-y-3 mt-3">
+                  {prefs.travellers.map((t, idx) => (
+                    <div key={idx} data-testid="traveller-row" className="bg-white rounded-xl border border-gray-200 p-3">
+                      <div className="flex items-center gap-2">
+                        <input className={`${inputClass} !py-1.5`} placeholder={`Traveller ${idx + 1} name`} value={t.name} maxLength={40}
+                          onChange={(e) => set({ travellers: prefs.travellers.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)) })} />
+                        <button className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Remove"
+                          onClick={() => set({ travellers: prefs.travellers.filter((_, i) => i !== idx) })}><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {INTERESTS.map((i) => (
+                          <Chip key={i} className="!px-2.5 !py-1 !text-xs" active={t.interests.includes(i)}
+                            onClick={() => set({ travellers: prefs.travellers.map((x, k) => (k === idx ? { ...x, interests: x.interests.includes(i) ? x.interests.filter((y) => y !== i) : [...x.interests, i] } : x)) })}>{i}</Chip>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {prefs.travellers.length === 0 && <div className="text-xs text-muted">No travellers added - the trip-level interests from the next step will be used.</div>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -177,7 +211,8 @@ export default function Plan() {
               {[
                 ["Destination", prefs.destination || "—"], ["Vibe", prefs.vibe], ["Dates", `${prefs.start_date} · ${prefs.days} days`],
                 ["Party", `${prefs.party} · ${prefs.group_size} ${prefs.group_size > 1 ? "people" : "person"}`], ["Budget", `${prefs.budget_level}${prefs.total_budget_inr ? ` · cap ₹${prefs.total_budget_inr.toLocaleString("en-IN")}` : ""}`],
-                ["Pace", prefs.pace], ["Interests", prefs.interests.join(", ") || "—"], ["Style notes", prefs.travel_style || "—"],
+                ["Pace", `${prefs.pace} · days start ${prefs.day_start}`], ["Interests", prefs.interests.join(", ") || "—"], ["Style notes", prefs.travel_style || "—"],
+                ["Travellers", prefs.travellers.length ? prefs.travellers.map((t, i) => `${t.name || `Traveller ${i + 1}`} (${t.interests.join(", ") || "—"})`).join("; ") : "—"],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-xl bg-gray-50 px-3.5 py-2.5"><div className="text-[11px] uppercase tracking-wide text-muted">{k}</div><div className="font-medium">{v}</div></div>
               ))}

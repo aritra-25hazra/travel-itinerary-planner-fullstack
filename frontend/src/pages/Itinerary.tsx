@@ -2,6 +2,8 @@ import { BedDouble, Download, Lock, RefreshCw, Save, ShieldAlert, Wand2 } from "
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import DayTimeline from "../components/DayTimeline";
+import GroupFitCard from "../components/GroupFitCard";
+import ShareCard from "../components/ShareCard";
 import { Badge, Button, Card, Chip, Cover, inputClass, Spinner } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { dateLabel, inr, money } from "../lib/format";
@@ -20,6 +22,7 @@ export default function Itinerary() {
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState<null | "day" | "trip" | "save" | "pdf">(null);
   const [tripName, setTripName] = useState("");
+  const [shareToken, setShareToken] = useState<string | null>(null);
 
   const cur = plan?.currency_code ?? "USD";
   // INR conversion factor derived from the backend totals (keeps a single source of truth for rates).
@@ -78,7 +81,20 @@ export default function Itinerary() {
       const name = tripName.trim() || defaultName;
       const t = tripId ? await api.trips.update(tripId, name, prefs, plan) : await api.trips.create(name, prefs, plan);
       setTripId(t.id);
+      setShareToken(t.share_token ?? null);
     }, tripId ? "Trip updated." : "Trip saved to My trips.");
+
+  async function saveForShare(): Promise<string | null> {
+    try {
+      const t = await api.trips.create(tripName.trim() || defaultName, prefs, plan!);
+      setTripId(t.id);
+      toast("success", "Trip saved to My trips.");
+      return t.id;
+    } catch (e) {
+      toast("error", e instanceof ApiError ? e.message : "Could not save the trip");
+      return null;
+    }
+  }
 
   const downloadPdf = () =>
     run("pdf", async () => {
@@ -188,6 +204,10 @@ export default function Itinerary() {
             <Button className="w-full mt-3" onClick={saveTrip} disabled={busy !== null}>{tripId ? "Update saved trip" : "Save to My trips"}</Button>
             {tripId && <button className="text-xs text-teal underline mt-2" onClick={() => nav("/trips")}>View in My trips</button>}
           </Card>
+
+          <ShareCard tripId={tripId} initialToken={shareToken} onNeedSave={saveForShare} />
+
+          {plan.group_fit && <GroupFitCard fit={plan.group_fit} />}
 
           <Card className="p-5 text-sm">
             <h3 className="font-semibold flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-coral" /> Emergency & packing</h3>

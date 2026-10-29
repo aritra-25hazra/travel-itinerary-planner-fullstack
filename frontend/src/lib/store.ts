@@ -20,6 +20,8 @@ export const defaultPreferences = (): Preferences => ({
   pace: "Moderate",
   interests: ["Food", "History"],
   travel_style: "",
+  travellers: [],
+  day_start: "09:00",
 });
 
 interface Toast {
@@ -67,6 +69,11 @@ export const useStore = create<State>()(
     }),
     {
       name: "tip.state",
+      version: 2,
+      migrate: (persisted: unknown) => {
+        const s = (persisted ?? {}) as Partial<State>;
+        return { ...s, preferences: { ...defaultPreferences(), ...(s.preferences ?? {}) } } as State;
+      },
       partialize: (s) => ({ preferences: s.preferences, plan: s.plan, recommendations: s.recommendations, currentTripId: s.currentTripId }),
     },
   ),

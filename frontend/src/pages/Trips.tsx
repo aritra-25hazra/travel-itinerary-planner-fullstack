@@ -86,6 +86,7 @@ export default function Trips() {
                 <div className="font-semibold truncate" title={t.name}>{t.name}</div>
                 <div className="flex flex-wrap gap-1.5 text-xs text-muted items-center">
                   <Badge tone="teal">{t.days} days</Badge><Badge tone="neutral">{t.budget_level}</Badge>
+                  {t.share_token && <Badge tone="good">Shared</Badge>}
                   <span className="flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {dateLabel(t.updated_at.slice(0, 10))}</span>
                 </div>
                 <div className="flex gap-2 pt-1">

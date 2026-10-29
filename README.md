@@ -50,9 +50,15 @@ Groq and Unsplash keys live only on the backend. The browser never sees them.
 | 5 | FastAPI backend APIs | `/api/recommendations`, `/api/itineraries/generate`, `/api/itineraries/regenerate-day`, `/api/itineraries/recompute`, `/api/itineraries/pdf`, `/api/images`, `/api/trips` CRUD, `/api/health` |
 | 6 | Supabase integration | `supabase/schema.sql` (trips table + RLS), `backend/auth.py` (token verification), `services/storage.py` (PostgREST with the user's JWT; SQLite for guests) |
 | 7 | React dashboard | Landing, Smart trip builder, Itinerary viewer (timeline, budget, stay, emergency), My trips, Login |
-| 8 | Customisation | Regenerate one day with quick chips or free text (other days locked), inline edit/delete of activities, regenerate whole trip |
-| 9 | Optimisation logic | One neighbourhood per day → greedy same-slot swaps that cut haversine distance → transport mode/minutes per hop → pace cap on hours → budget status vs tier or hard cap |
+| 8 | Customisation | Regenerate one day with quick chips or free text (other days locked), inline edit/delete of activities, regenerate whole trip; **share a read-only link** so friends can view, **clone** and refine their own copy |
+| 9 | Optimisation logic | One neighbourhood per day → greedy same-slot swaps that cut haversine distance → transport mode/minutes per hop → pace cap on hours → **timed schedule** (start/end per activity, lunch anchored ≥ 11:30, warnings for days past 23:00) → budget status vs tier or hard cap → **group-fit report** (per-traveller interest coverage + conflicts) |
 | 10 | Deploy & test | `render.yaml`, `frontend/vercel.json`, `backend/tests/` (14 API tests), Playwright E2E flow run before shipping |
+
+## Scenarios it covers
+
+- **Solo weekend getaway** – destination, dates, budget tier, interests → clustered days, timed schedule, affordable dining, transport between stops.
+- **Couple's personalised vacation** – Relaxed pace, Nature/Wellness interests, Luxury tier → premium stay suggestion; edit activities, regenerate single days, track costs; share the link with your partner, who can clone and refine.
+- **Small group multi-day trip** – group size + each traveller's interests → the plan covers everyone, the **Group fit** card shows who is under-served and which days serve whom, schedule warnings catch over-packed days, and the share link keeps the whole group on one plan.
 
 ## API (backend)
 
@@ -64,6 +70,8 @@ Groq and Unsplash keys live only on the backend. The browser never sees them.
 | POST | `/api/itineraries/regenerate-day` | `{preferences, plan, day_index, instruction}` → plan with only that day changed |
 | POST | `/api/itineraries/recompute` | Refresh transport / hours / totals after manual edits (no AI) |
 | POST | `/api/itineraries/pdf` | Offline PDF guide (ReportLab) |
+| POST/DELETE | `/api/trips/{id}/share` | Turn a public read-only share link on / off (owner only) |
+| GET | `/api/shared/{token}` | Public view of a shared trip (no login) · POST `/api/shared/{token}/clone` copies it into the caller's trips |
 | GET | `/api/images?query=` | Unsplash photo (24 h cache) or gradient placeholder |
 | GET/POST | `/api/trips` · GET/PUT/DELETE `/api/trips/{id}` | Trip persistence (Supabase for signed-in users, SQLite for guests) |
 

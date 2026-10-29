@@ -1,4 +1,4 @@
-import { Check, Clock, MapPin, Pencil, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, MapPin, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { hours, inr, money, transportIcon } from "../lib/format";
 import type { Activity, Day } from "../lib/types";
@@ -9,11 +9,12 @@ interface Props {
   currency: string;
   toInr: (local: number) => number;
   km?: number;
-  onEdit: (index: number, patch: Partial<Activity>) => void;
-  onDelete: (index: number) => void;
+  readOnly?: boolean;
+  onEdit?: (index: number, patch: Partial<Activity>) => void;
+  onDelete?: (index: number) => void;
 }
 
-export default function DayTimeline({ day, currency, toInr, km, onEdit, onDelete }: Props) {
+export default function DayTimeline({ day, currency, toInr, km, readOnly = false, onEdit, onDelete }: Props) {
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ name: string; cost: string }>({ name: "", cost: "" });
   const total = day.activities.reduce((s, a) => s + a.cost_local, 0);
@@ -26,7 +27,17 @@ export default function DayTimeline({ day, currency, toInr, km, onEdit, onDelete
         <span className="text-sm">Cluster: <b>{day.area}</b></span>
         {km !== undefined && <Badge tone={tone}>{km <= 8 ? "Low" : km <= 20 ? "Moderate" : "High"} transit · {km.toFixed(1)} km</Badge>}
         {day.total_hours !== undefined && <Badge tone="neutral"><Clock className="w-3 h-3 inline -mt-0.5" /> {hours(day.total_hours)} active</Badge>}
+        {day.activities[0]?.start_time && day.ends_at && <Badge tone="neutral">{day.activities[0].start_time} → {day.ends_at}</Badge>}
       </div>
+      {day.schedule_warnings && day.schedule_warnings.length > 0 && (
+        <div className="mb-4 space-y-1">
+          {day.schedule_warnings.map((w) => (
+            <div key={w} className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {w}
+            </div>
+          ))}
+        </div>
+      )}
 
       <ol className="relative border-l-2 border-teal-100 ml-3 space-y-5">
         {day.activities.map((a, i) => {
@@ -38,16 +49,20 @@ export default function DayTimeline({ day, currency, toInr, km, onEdit, onDelete
               {t && t.mode !== "start" && (
                 <div className="text-[11px] text-muted -mt-0.5 mb-1.5">
                   {transportIcon[t.mode] ?? "🚕"} {t.mode} · {t.minutes} min{t.km != null ? ` · ${t.km} km` : ""}
+                  {a.wait_minutes ? ` · ☕ ${a.wait_minutes} min free before lunch` : ""}
                 </div>
               )}
               <div className="flex gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] uppercase tracking-wider text-muted font-semibold">{a.slot}</div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted font-semibold">
+                    {a.start_time && a.end_time && <span className="text-teal mr-2 tabular-nums">{a.start_time}–{a.end_time}</span>}
+                    {a.slot}
+                  </div>
                   {isEditing ? (
                     <div className="mt-1 flex flex-wrap gap-2 items-center">
                       <input className="rounded-lg border border-gray-200 px-2 py-1 text-sm flex-1 min-w-[160px]" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
                       <input className="rounded-lg border border-gray-200 px-2 py-1 text-sm w-28" type="number" min={0} value={draft.cost} onChange={(e) => setDraft({ ...draft, cost: e.target.value })} />
-                      <button className="p-1.5 rounded-lg bg-teal text-white" title="Save" onClick={() => { onEdit(i, { name: draft.name.trim() || a.name, cost_local: Math.max(0, Number(draft.cost) || 0) }); setEditing(null); }}><Check className="w-4 h-4" /></button>
+                      <button className="p-1.5 rounded-lg bg-teal text-white" title="Save" onClick={() => { onEdit?.(i, { name: draft.name.trim() || a.name, cost_local: Math.max(0, Number(draft.cost) || 0) }); setEditing(null); }}><Check className="w-4 h-4" /></button>
                       <button className="p-1.5 rounded-lg border border-gray-200" title="Cancel" onClick={() => setEditing(null)}><X className="w-4 h-4" /></button>
                     </div>
                   ) : (
@@ -59,10 +74,10 @@ export default function DayTimeline({ day, currency, toInr, km, onEdit, onDelete
                 <div className="text-right shrink-0">
                   <div className="font-bold text-coral">{money(a.cost_local, currency)}</div>
                   {currency !== "INR" && <div className="text-[11px] text-muted">≈ {inr(toInr(a.cost_local))}</div>}
-                  {!isEditing && (
+                  {!isEditing && !readOnly && (
                     <div className="flex justify-end gap-1 mt-1.5 opacity-70">
                       <button className="p-1 rounded hover:bg-gray-100" title="Edit" onClick={() => { setDraft({ name: a.name, cost: String(a.cost_local) }); setEditing(i); }}><Pencil className="w-3.5 h-3.5" /></button>
-                      <button className="p-1 rounded hover:bg-red-50 text-red-600" title="Remove" onClick={() => onDelete(i)}><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button className="p-1 rounded hover:bg-red-50 text-red-600" title="Remove" onClick={() => onDelete?.(i)}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   )}
                 </div>

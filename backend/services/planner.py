@@ -75,6 +75,12 @@ def _extra_prompt_context(prefs: Preferences) -> str:
         lines.append(f"Hard cap for activities + food for the whole trip: INR {prefs.total_budget_inr:,.0f} (~USD {prefs.total_budget_inr / engine.INR_PER_USD:,.0f})")
     if prefs.travel_style:
         lines.append(f"Travel style notes from the traveller: {prefs.travel_style}")
+    if prefs.travellers:
+        people = "; ".join(f"{t.name or 'Traveller ' + str(i + 1)}: {', '.join(t.interests) or 'no specific interests'}"
+                           for i, t in enumerate(prefs.travellers))
+        lines.append(f"This is a group trip. Per-person interests - {people}. Make sure every person has at least one "
+                     f"activity for their interests across the trip, and keep days together as a group (no splitting up).")
+    lines.append(f"Each day starts around {prefs.day_start}.")
     lines.append("Also include an \"accommodation\" object: {\"name\": suggested hotel/area to stay, \"area\": neighbourhood, "
                  "\"type\": hostel/3-star/boutique/5-star, \"est_cost_per_night_local\": number} and for every activity a "
                  "\"transport_from_prev\": {\"mode\": walk/metro/taxi/bus/auto, \"minutes\": number} describing how to get there from the previous stop.")
@@ -123,6 +129,94 @@ def _apply_pace_cap(plan: dict, pace: str) -> None:
             longest["duration_hours"] = round(max(1.0, longest["duration_hours"] - min(1.0, total - cap)), 1)
             total = sum(a["duration_hours"] for a in d["activities"])
         d["total_hours"] = round(total, 1)
+
+
+def _hhmm(minutes: int) -> str:
+    minutes = max(0, int(minutes))
+    return f"{(minutes // 60) % 24:02d}:{minutes % 60:02d}"
+
+
+def _schedule(plan: dict, day_start: str = "09:00") -> None:
+    """Assign start/end clock times to every activity (sequential, including transport) and flag schedule conflicts:
+    a day that runs past 23:00, or a lunch slot that lands outside 11:30-15:00."""
+    try:
+        h, m = day_start.split(":")
+        start_min = int(h) * 60 + int(m)
+    except ValueError:
+        start_min = 9 * 60
+    for d in plan["days"]:
+        t = start_min
+        warnings: list[str] = []
+        for a in d["activities"]:
+            tr = a.get("transport_from_prev") or {}
+            t += int(tr.get("minutes") or 0)
+            # lunch should not start before 11:30 - wait if the morning was short
+            if a["slot"] == "Lunch Recommendation" and t < 11 * 60 + 30:
+                a["wait_minutes"] = (11 * 60 + 30) - t
+                t = 11 * 60 + 30
+            else:
+                a["wait_minutes"] = 0
+            a["start_time"] = _hhmm(t)
+            t += int(round(float(a["duration_hours"]) * 60))
+            a["end_time"] = _hhmm(t)
+            if a["slot"] == "Lunch Recommendation" and t - int(round(float(a["duration_hours"]) * 60)) > 15 * 60:
+                warnings.append("Lunch lands after 3 pm - consider shortening the morning activity.")
+        d["ends_at"] = _hhmm(t)
+        if t > 23 * 60:
+            late = _hhmm(t) + (" next day" if t >= 24 * 60 else "")
+            warnings.append(f"Day runs until {late} - trim an activity, start earlier or pick a more relaxed pace.")
+        if t - start_min > 15 * 60:
+            warnings.append("More than 15 hours on the move - this day will be exhausting.")
+        d["schedule_warnings"] = warnings
+
+
+# Activity categories that satisfy each interest (categories come from the planner / demo data).
+INTEREST_MATCH = {
+    "Food": {"Food", "Dining"},
+    "Adventure": {"Adventure"},
+    "History": {"History", "Sightseeing"},
+    "Nightlife": {"Nightlife"},
+    "Nature": {"Nature"},
+    "Shopping": {"Shopping"},
+    "Art & Museums": {"Art & Museums"},
+    "Wellness": {"Wellness", "Leisure"},
+}
+
+
+def _group_fit(plan: dict, prefs: Preferences) -> dict | None:
+    """For group trips: how many activities match each traveller's interests and which interests got nothing."""
+    if not prefs.travellers:
+        return None
+    cats_by_day = [(d["day"], [a["category"] for a in d["activities"]]) for d in plan["days"]]
+    members = []
+    for i, t in enumerate(prefs.travellers):
+        name = t.name or f"Traveller {i + 1}"
+        hits, uncovered, days_covered = 0, [], set()
+        for interest in t.interests:
+            match = INTEREST_MATCH.get(interest, {interest})
+            n = 0
+            for day, cats in cats_by_day:
+                k = sum(1 for c in cats if c in match)
+                n += k
+                if k:
+                    days_covered.add(day)
+            hits += n
+            if n == 0:
+                uncovered.append(interest)
+        total_acts = sum(len(c) for _, c in cats_by_day) or 1
+        members.append({"name": name, "interests": list(t.interests), "matched_activities": hits,
+                        "uncovered": uncovered, "days_with_a_match": sorted(days_covered),
+                        "score": round(min(1.0, hits / max(1, len(t.interests) * 2)), 2) if t.interests else 1.0,
+                        "share_of_trip": round(hits / total_acts, 2)})
+    conflicts = []
+    all_uncovered = {u for m in members for u in m["uncovered"]}
+    for u in sorted(all_uncovered):
+        who = [m["name"] for m in members if u in m["uncovered"]]
+        conflicts.append(f"{', '.join(who)} wanted {u} but no activity covers it - try 'Add {u.lower()}' on a day.")
+    balanced = all(m["score"] >= 0.5 for m in members)
+    return {"members": members, "conflicts": conflicts, "balanced": balanced,
+            "summary": "Every traveller has activities for their interests." if balanced and not conflicts
+                       else "Some travellers are under-served - see conflicts."}
 
 
 def _accommodation(raw: dict, plan: dict, prefs: Preferences) -> dict:
@@ -200,8 +294,10 @@ def finalize(raw: dict, prefs: Preferences) -> dict:
                               "days": [{"day": d["day"], "area": d["area"], "km": round(engine.day_transit_km(d) or 0.0, 1)} for d in plan["days"]]}
     _estimate_transport(plan)
     _apply_pace_cap(plan, prefs.pace)
+    _schedule(plan, prefs.day_start)
     plan["accommodation"] = _accommodation(raw, plan, prefs)
     _totals(plan, prefs)
+    plan["group_fit"] = _group_fit(plan, prefs)
     plan["prefs"] = prefs.model_dump(mode="json")
     plan["pace_note"] = PACE_LABEL.get(prefs.pace, "")
     return plan
@@ -271,9 +367,11 @@ async def regenerate_day(prefs: Preferences, plan: dict, day_idx: int, instructi
     new_plan["days"][day_idx] = new_day
     _estimate_transport(new_plan)
     _apply_pace_cap(new_plan, prefs.pace)
+    _schedule(new_plan, prefs.day_start)
     new_plan["cluster_report"] = {**(new_plan.get("cluster_report") or {}),
                                   "days": [{"day": d["day"], "area": d["area"], "km": round(engine.day_transit_km(d) or 0.0, 1)} for d in new_plan["days"]]}
     _totals(new_plan, prefs)
+    new_plan["group_fit"] = _group_fit(new_plan, prefs)
     new_plan["last_change"] = {"day": old_day["day"], "instruction": instruction, "at": datetime.now().isoformat(timespec="seconds")}
     return new_plan
 
@@ -287,7 +385,9 @@ def recompute(plan: dict, prefs: Preferences) -> dict:
             a["duration_hours"] = max(0.5, engine.safe_float(a.get("duration_hours"), 1.0))
     _estimate_transport(new_plan)
     _apply_pace_cap(new_plan, prefs.pace)
+    _schedule(new_plan, prefs.day_start)
     _totals(new_plan, prefs)
+    new_plan["group_fit"] = _group_fit(new_plan, prefs)
     return new_plan
 
 

@@ -1,4 +1,4 @@
-import { ArrowRight, BrainCircuit, FileDown, MapPinned, Sparkles, Wallet, WandSparkles } from "lucide-react";
+import { ArrowRight, BrainCircuit, FileDown, MapPinned, Share2, Sparkles, Users, Wallet, WandSparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button, Card } from "../components/ui";
 import { useAuth } from "../lib/auth";
@@ -9,6 +9,8 @@ const FEATURES = [
   { icon: MapPinned, title: "Geographic clustering", text: "Each day stays in one neighbourhood. A route optimiser regroups nearby attractions so you never backtrack across the city." },
   { icon: Wallet, title: "Live budget tracker", text: "Every activity is costed in local currency, USD and INR, with a running total against your budget tier or hard cap." },
   { icon: WandSparkles, title: "Regenerate just one day", text: "\"Swap the museum for a market\", \"find a vegetarian lunch\" — only that day changes, the rest stays locked." },
+  { icon: Users, title: "Built for groups", text: "Add each traveller's interests. The plan covers everyone and a group-fit report shows who's under-served, with timed schedules that flag late nights." },
+  { icon: Share2, title: "Share & clone", text: "Send a read-only link to your group. Friends can view the plan, clone it into their own trips, tweak it and share back." },
   { icon: BrainCircuit, title: "Groq-powered, demo-safe", text: "Live generation with Groq LLMs when a key is configured; a deterministic demo engine otherwise, so the app always works." },
   { icon: FileDown, title: "Offline PDF guide", text: "One click exports the full plan with an emergency-contact checklist, packing list and local tips." },
 ];
@@ -33,7 +35,7 @@ export default function Landing() {
         {enabled && !session && <p className="mt-4 text-xs text-white/80">Guest mode saves trips to this browser. <Link to="/login" className="underline">Sign in</Link> to keep them in your account.</p>}
       </section>
 
-      <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {FEATURES.map((f) => (
           <Card key={f.title} className="p-5">
             <f.icon className="w-6 h-6 text-coral" />

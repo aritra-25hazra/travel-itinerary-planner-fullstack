@@ -3,6 +3,11 @@ export type BudgetLevel = "Budget" | "Moderate" | "Luxury";
 export type Party = "Solo" | "Couple" | "Family" | "Friends";
 export type Pace = "Relaxed" | "Moderate" | "Fast-Paced";
 
+export interface Traveller {
+  name: string;
+  interests: string[];
+}
+
 export interface Preferences {
   destination: string;
   vibe: Vibe;
@@ -15,6 +20,8 @@ export interface Preferences {
   pace: Pace;
   interests: string[];
   travel_style: string;
+  travellers: Traveller[];
+  day_start: string; // "HH:MM"
 }
 
 export interface ImageInfo {
@@ -44,6 +51,9 @@ export interface Activity {
   lat: number | null;
   lng: number | null;
   transport_from_prev?: Transport;
+  start_time?: string;
+  end_time?: string;
+  wait_minutes?: number;
 }
 
 export interface Day {
@@ -53,6 +63,8 @@ export interface Day {
   area: string;
   activities: Activity[];
   total_hours?: number;
+  ends_at?: string;
+  schedule_warnings?: string[];
 }
 
 export interface Accommodation {
@@ -89,6 +101,23 @@ export interface Totals {
   budget_status: BudgetStatus;
 }
 
+export interface GroupFitMember {
+  name: string;
+  interests: string[];
+  matched_activities: number;
+  uncovered: string[];
+  days_with_a_match: number[];
+  score: number;
+  share_of_trip: number;
+}
+
+export interface GroupFit {
+  members: GroupFitMember[];
+  conflicts: string[];
+  balanced: boolean;
+  summary: string;
+}
+
 export interface Plan {
   destination: string;
   country: string;
@@ -106,6 +135,7 @@ export interface Plan {
   ai_mode?: "groq" | "demo";
   last_change?: { day: number; instruction: string; at: string };
   pace_note?: string;
+  group_fit?: GroupFit | null;
 }
 
 export interface Recommendation {
@@ -131,8 +161,27 @@ export interface TripSummary {
   cover_image: string | null;
   created_at: string;
   updated_at: string;
+  share_token?: string | null;
   preferences?: Preferences;
   plan?: Plan;
+}
+
+export interface SharedTrip {
+  share_token: string;
+  name: string;
+  destination: string;
+  days: number;
+  budget_level: string;
+  cover_image: string | null;
+  updated_at: string;
+  preferences: Preferences;
+  plan: Plan;
+}
+
+export interface ShareInfo {
+  trip_id: string;
+  share_token: string | null;
+  share_path: string | null;
 }
 
 export interface Health {

@@ -199,3 +199,99 @@ def test_storage_summary_handles_dict_cover():
     s = storage._summary({"destination": "X", "days": [1, 2], "cover_image": {"url": "http://img"}})
     assert s == {"destination": "X", "days": 2, "cover_image": "http://img"}
     assert json.dumps(s)
+
+
+# --------------------------------------------------------------------------- v1.1: schedule, group fit, sharing
+
+
+def test_schedule_times_and_lunch_anchor(client):
+    plan = client.post("/api/itineraries/generate", json={**PREFS, "day_start": "08:30"}, headers=GUEST).json()
+    for d in plan["days"]:
+        acts = d["activities"]
+        assert acts[0]["start_time"] == "08:30"
+        # sequential: each activity starts at or after the previous one ends
+        for prev, cur in zip(acts, acts[1:]):
+            assert cur["start_time"] >= prev["end_time"]
+        assert acts[1]["start_time"] >= "11:30"  # lunch never before 11:30
+        assert "ends_at" in d and isinstance(d["schedule_warnings"], list)
+
+
+def test_schedule_warning_when_day_runs_late(client):
+    late = {**PREFS, "day_start": "15:30", "pace": "Fast-Paced"}  # late start + packed day -> past 23:00
+    plan = client.post("/api/itineraries/generate", json=late, headers=GUEST).json()
+    assert any("runs until" in w for w in plan["days"][0]["schedule_warnings"]), plan["days"][0]
+    # normal start -> no late warning
+    ok = client.post("/api/itineraries/generate", json=PREFS, headers=GUEST).json()
+    assert not any("runs until" in w for d in ok["days"] for w in d["schedule_warnings"])
+
+
+def test_group_fit_report(client):
+    prefs = {**PREFS, "party": "Friends", "group_size": 3, "interests": [],
+             "travellers": [{"name": "Aman", "interests": ["Food", "Nightlife"]},
+                            {"name": "Riya", "interests": ["Wellness"]},
+                            {"name": "Zed", "interests": ["Art & Museums"]}]}
+    plan = client.post("/api/itineraries/generate", json=prefs, headers=GUEST).json()
+    gf = plan["group_fit"]
+    assert [m["name"] for m in gf["members"]] == ["Aman", "Riya", "Zed"]
+    aman = gf["members"][0]
+    assert aman["matched_activities"] > 0 and aman["uncovered"] == []
+    assert isinstance(gf["conflicts"], list) and "summary" in gf
+    # merged interests reach the engine (prompt/demo) - the legacy prefs carry the union
+    from models import Preferences
+    assert Preferences(**prefs).merged_interests() == ["Food", "Nightlife", "Wellness", "Art & Museums"]
+    # no travellers -> no report
+    assert client.post("/api/itineraries/generate", json=PREFS, headers=GUEST).json()["group_fit"] is None
+
+
+def test_share_link_flow_sqlite(client):
+    plan = client.post("/api/itineraries/generate", json=PREFS, headers=GUEST).json()
+    tid = client.post("/api/trips", json={"name": "Goa squad", "preferences": PREFS, "plan": plan}, headers=GUEST).json()["id"]
+    # not shared yet
+    assert client.get("/api/shared/not-a-real-token-xyz").status_code == 404
+    r = client.post(f"/api/trips/{tid}/share", headers=GUEST)
+    assert r.status_code == 200, r.text
+    token = r.json()["share_token"]
+    assert token and r.json()["share_path"] == f"/share/{token}"
+    # idempotent
+    assert client.post(f"/api/trips/{tid}/share", headers=GUEST).json()["share_token"] == token
+    # only the owner can share
+    other = {"X-Guest-Id": str(uuid.uuid4())}
+    assert client.post(f"/api/trips/{tid}/share", headers=other).status_code == 404
+    # anyone can read, without any identity header, and the owner id is not exposed
+    pub = client.get(f"/api/shared/{token}")
+    assert pub.status_code == 200 and pub.json()["name"] == "Goa squad" and pub.json()["plan"]["destination"] == "Goa"
+    assert "owner_id" not in pub.json() and "id" not in pub.json()
+    # listing shows the token to the owner
+    assert client.get("/api/trips", headers=GUEST).json()[0]["share_token"] == token
+    # another person clones it into their own trips
+    c = client.post(f"/api/shared/{token}/clone", headers=other)
+    assert c.status_code == 201 and c.json()["name"] == "Goa squad (copy)"
+    assert client.get("/api/trips", headers=other).json()[0]["id"] == c.json()["id"]
+    # revoke -> link dies
+    assert client.delete(f"/api/trips/{tid}/share", headers=GUEST).json()["share_token"] is None
+    assert client.get(f"/api/shared/{token}").status_code == 404
+
+
+def test_share_supabase_rpc_with_mock(client, monkeypatch, tmp_path):
+    live = Settings(sqlite_path=str(tmp_path / "x.db"), supabase_url="https://proj.supabase.co", supabase_anon_key="anon", _env_file=None)
+    import main
+    main.app.dependency_overrides[get_settings] = lambda: live
+    calls = []
+
+    async def fake_post(self, url, headers=None, content=None, json=None, **kw):
+        calls.append((url, headers, content))
+        if url.endswith("/rpc/get_shared_trip"):
+            body = __import__("json").loads(content)
+            if body["token"] == "tok_abcdefgh":
+                return httpx.Response(200, json=[{"name": "Shared", "destination": "Goa", "days": 2, "budget_level": "Moderate",
+                                                  "cover_image": None, "updated_at": "2026-01-01T00:00:00+00:00",
+                                                  "preferences": PREFS, "plan": {"destination": "Goa", "days": []}}],
+                                      request=httpx.Request("POST", url))
+            return httpx.Response(200, json=[], request=httpx.Request("POST", url))
+        return httpx.Response(404, json={}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    r = client.get("/api/shared/tok_abcdefgh")
+    assert r.status_code == 200 and r.json()["name"] == "Shared"
+    assert calls[0][1]["Authorization"] == "Bearer anon"  # anon key only, never a user token
+    assert client.get("/api/shared/tok_unknown1").status_code == 404

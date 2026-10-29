@@ -1,6 +1,6 @@
 import { guestId } from "./guest";
 import { supabase } from "./supabase";
-import type { Health, Plan, Preferences, Recommendation, TripSummary } from "./types";
+import type { Health, Plan, Preferences, Recommendation, SharedTrip, ShareInfo, TripSummary } from "./types";
 
 const BASE = ((import.meta.env.VITE_API_URL as string | undefined) || "").replace(/\/$/, "");
 
@@ -66,5 +66,11 @@ export const api = {
     update: (id: string, name: string, preferences: Preferences, plan: Plan) =>
       request<TripSummary>(`/api/trips/${id}`, { method: "PUT", body: JSON.stringify({ name, preferences, plan }) }),
     remove: (id: string) => request<void>(`/api/trips/${id}`, { method: "DELETE" }),
+    share: (id: string) => request<ShareInfo>(`/api/trips/${id}/share`, { method: "POST" }),
+    unshare: (id: string) => request<ShareInfo>(`/api/trips/${id}/share`, { method: "DELETE" }),
+  },
+  shared: {
+    get: (token: string) => request<SharedTrip>(`/api/shared/${token}`),
+    clone: (token: string) => request<TripSummary>(`/api/shared/${token}/clone`, { method: "POST" }),
   },
 };

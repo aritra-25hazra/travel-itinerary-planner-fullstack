@@ -5,6 +5,7 @@ import Itinerary from "./pages/Itinerary";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Plan from "./pages/Plan";
+import SharedTrip from "./pages/SharedTrip";
 import Trips from "./pages/Trips";
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
             <Route path="/itinerary" element={<Itinerary />} />
             <Route path="/trips" element={<Trips />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/share/:token" element={<SharedTrip />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

@@ -18,8 +18,12 @@ create table if not exists public.trips (
   preferences   jsonb not null,
   plan          jsonb not null,
   created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  updated_at    timestamptz not null default now(),
+  share_token   text unique                      -- set = trip is viewable by anyone with the link
 );
+
+-- Safe to re-run on an existing table created before sharing existed.
+alter table public.trips add column if not exists share_token text unique;
 
 create index if not exists trips_user_updated_idx on public.trips (user_id, updated_at desc);
 
@@ -55,5 +59,23 @@ create trigger trips_set_updated_at
   before update on public.trips
   for each row execute function public.set_updated_at();
 
+-- Public read-only sharing: anyone with a share token can fetch THAT trip only.
+-- SECURITY DEFINER lets the anon role call this without opening RLS on the table itself.
+create or replace function public.get_shared_trip(token text)
+returns table (
+  name text, destination text, days integer, budget_level text, cover_image text,
+  updated_at timestamptz, preferences jsonb, plan jsonb
+)
+language sql security definer set search_path = public as $$
+  select t.name, t.destination, t.days, t.budget_level, t.cover_image, t.updated_at, t.preferences, t.plan
+  from public.trips t
+  where t.share_token = token and token is not null and length(token) >= 8
+  limit 1;
+$$;
+
+revoke all on function public.get_shared_trip(text) from public;
+grant execute on function public.get_shared_trip(text) to anon, authenticated;
+
 -- The backend talks to this table through PostgREST with the *user's own JWT*
 -- (never a service-role key), so these policies are the real security boundary.
+-- The only anonymous entry point is get_shared_trip(token) above.
