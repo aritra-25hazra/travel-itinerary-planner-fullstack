@@ -1,10 +1,7 @@
 import { Compass, LogIn, LogOut, Map, PlusCircle, X } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useStore } from "../lib/store";
-import type { Health } from "../lib/types";
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-2 rounded-lg text-sm font-medium transition ${isActive ? "bg-teal-50 text-teal" : "text-muted hover:text-ink hover:bg-gray-50"}`;
@@ -13,11 +10,6 @@ export default function Layout() {
   const { session, enabled, signOut } = useAuth();
   const toasts = useStore((s) => s.toasts);
   const dismiss = useStore((s) => s.dismissToast);
-  const [health, setHealth] = useState<Health | null>(null);
-
-  useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth(null));
-  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -39,16 +31,6 @@ export default function Layout() {
             )}
           </nav>
         </div>
-        {health && (
-          <div className="bg-sand text-[11px] text-muted">
-            <div className="max-w-6xl mx-auto px-4 py-1 flex flex-wrap gap-x-4">
-              <span>AI: <b className="text-ink">{health.ai_mode === "groq" ? "Groq (live)" : "Demo engine"}</b></span>
-              <span>Storage: <b className="text-ink">{health.storage === "supabase" ? "Supabase" : "Local SQLite (guest)"}</b></span>
-              <span>Images: <b className="text-ink">{health.images ? "Unsplash" : "Placeholders"}</b></span>
-              <span>Account: <b className="text-ink">{session ? session.user.email : "Guest"}</b></span>
-            </div>
-          </div>
-        )}
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
